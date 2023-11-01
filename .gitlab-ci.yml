@@ -1,0 +1,78 @@
+variables:
+  ENV:
+    value: dev
+    options:
+      - dev
+      - prod
+    description: Environment level
+  REGION:
+    value: eu-central-1
+    options:
+      - eu-central-1
+      - eu-north-1
+    description: AWS region
+
+stages:
+  - mvn-package
+  - terraform-plan
+  - terraform-apply
+  - terraform-destroy
+
+mvn-package:
+  image: ${CI_DEPENDENCY_PROXY_DIRECT_GROUP_IMAGE_PREFIX}/maven:3.9.5-amazoncorretto-17
+  stage: mvn-package
+  cache:
+    key: ${REGION}-${ENV}-mvn
+    paths:
+      - java/.m2/repository
+  variables:
+    MAVEN_OPTS: -Dmaven.repo.local=.m2/repository
+  script:
+    - cd java
+    - mvn package
+  artifacts:
+    paths:
+      - java/target/java-function-1.0.jar
+
+.terraform-template:
+  image:
+    name: ${CI_DEPENDENCY_PROXY_DIRECT_GROUP_IMAGE_PREFIX}/hashicorp/terraform:1.6.3
+    entrypoint:
+      - ""
+  before_script:
+    - cd terraform
+    - terraform init -backend-config=backends/${REGION}/${ENV}.s3.tfbackend
+  cache:
+    key: ${REGION}-${ENV}-terraform
+    paths:
+      - terraform/.terraform
+
+terraform-plan:
+  extends: .terraform-template
+  stage: terraform-plan
+  script:
+    - terraform plan -var-file=variables/${REGION}/${ENV}.tfvars
+
+terraform-apply:
+  extends: .terraform-template
+  stage: terraform-apply
+  environment:
+    name: ${REGION}-${ENV}
+    action: start
+  script:
+    - terraform apply -var-file=variables/${REGION}/${ENV}.tfvars -auto-approve
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+
+terraform-destroy:
+  extends: .terraform-template
+  stage: terraform-destroy
+  environment:
+    name: ${REGION}-${ENV}
+    action: stop
+  script:
+    - terraform destroy -var-file=variables/${REGION}/${ENV}.tfvars -auto-approve
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual

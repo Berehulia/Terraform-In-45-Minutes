@@ -1,0 +1,5 @@
+region         = "eu-central-1"
+key            = "function-dev.tfstate"
+bucket         = "function-terraform-state-eu-central-1"
+dynamodb_table = "function-terraform-state-lock"
+encrypt        = true
